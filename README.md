@@ -1,4 +1,4 @@
-@[TOC](文章目录)
+
 
 ---
 # 智能车入门到进门
@@ -518,8 +518,38 @@ void Timer0_Routune() interrupt 1 //中断函数，定时器0的中断号为1
 循迹原理非常简单
 
 > EYE数组有001 011 111 101 110 100 010 000几种可能
-> 当001时 说明小车偏左，
+> 当001时 说明小车偏左，100则小车偏右，以此类推。
+> 小车偏左时，左轮转速大于右轮即可修正。
 
+```c
+void follow_way()
+{   
+    if((EYE[0]==0)&&(EYE[2]==1))
+    {
+	    flag = 0;//左边检测到黑线
+    }
+    else if((EYE[0]==1)&&(EYE[2]==0))
+    {
+		  flag = 1;//右边检测到黑线
+	}
+    else if(EYE[0]==1)&&(EYE[2]==1)
+	{
+			flag = 3; //两边都没检测到黑线
+	}
+		else
+	{
+		  flag = 4;
+	}
+		switch(flag)
+	{
+		case 0:  Right_turning();break;
+		case 1:  Left_turning();break;
+		case 3:  forward_move();break;
+		case 4:  forward_move();break;
+		default: forward_move();break;
+	}
+}
+```
 
 #  第二章 电磁循迹小车设计
 ## 电感循迹的原理
@@ -543,11 +573,5 @@ void Timer0_Routune() interrupt 1 //中断函数，定时器0的中断号为1
 
 
 ---
-————————————————
-红外循迹版权声明：本文为CSDN博主「慕羽★」的原创文章，遵循CC 4.0 BY-SA版权协议，转载请附上原文出处链接及本声明。
-原文链接：https://blog.csdn.net/qq_44339029/article/details/106319639
-
-`提示：写完文章后，目录可以自动生成，如何生成可参考右边的帮助文档`
-
 
 
