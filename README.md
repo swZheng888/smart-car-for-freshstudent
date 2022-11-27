@@ -1,7 +1,7 @@
-# smart-car-for-freshstudent
+@[TOC](文章目录)
 
 ---
-# 智能车入门到入土
+# 智能车入门到进门
 
  ## 前言
  本文默认您已熟练掌握C语言基本语法，在语法与用法上不做讲解
@@ -115,7 +115,29 @@ void main()
 	}
 }	
 ```
+###### 2.1.3红外模块数据读取
+将红外避障模块的数据储存在EYE数组中
+```c
+#include <REGX52.H>
+#include <stdio.h>
 
+sbit left_trace=P3^7;//左边红外避障模块
+sbit right_trace=P3^5;//中间红外避障模块
+sbit mid_trace=P3^6;//右边红外避障模块
+uint8_t ERE[3]=0;
+void main()
+{
+	
+	while(1)
+	{
+		EYE[0]=left_trace;
+		EYE[1]=right_trace;
+		EYE[2]=mid_trace;
+
+	}
+}
+
+```
 
 #### 2.2中断的概念
 先看百度百科是怎么定义中断的:
@@ -262,13 +284,14 @@ IT0 外部中断0触发方式选择位**
 因此将TH0、TL0设置从（65536-10000）= 55536开始计数。55536 的16进制为0xD8F0。因此将TH0设置为0xD8,TL0 设置为0xF0。**
 
 
-##### 2.3 利用定时器生产PWM波
+#### 2.3 利用定时器生产PWM波
+
 ###### 2.3.1什么是PWM
 ​ 脉冲宽度调制(PWM)，是英文“Pulse Width Modulation”的缩写，简称脉宽调制，是利用微处理器的数字输出来对模拟电路进行控制的一种非常有效的技术，广泛应用在从测量、通信到功率控制与变换的许多领域中。 ​
 
 
 
-###### 2.3.2**PWM的频率：**
+###### 2.3.2PWM的频率：
 
 是指1秒钟内信号从高电平到低电平再回到高电平的次数(一个周期)；
 
@@ -276,7 +299,7 @@ IT0 外部中断0触发方式选择位**
 单位： Hz
 表示方式： 50Hz 100Hz
 
-###### 2.3.3**PWM的周期：**
+###### 2.3.3PWM的周期：
 
 T=1/f
 周期=1/频率
@@ -284,7 +307,7 @@ T=1/f
 
 如果频率为50Hz ，也就是说一个周期是20ms 那么一秒钟就有 50次PWM周期
 
-###### 2.3.4**占空比：**
+###### 2.3.4占空比：
 是一个脉冲周期内，高电平的时间与整个周期时间的比例
 单位： % (0%-100%)
 表示方式：20%
@@ -313,7 +336,7 @@ T2 为低电平时间
 
 假设周期T为 1s 那么频率就是 1Hz 那么高电平时间0.5s ，低电平时间0.5s 总的占空比就是 0.5 /1 =50%
 
-###### 2.3.5**PWM原理**
+###### 2.3.5PWM原理
 以单片机为例，我们知道，单片机的IO口输出的是数字信号，IO口只能输出高电平和低电平
 
 假设高电平为5V 低电平则为0V 那么我们要输出不同的模拟电压，就要用到PWM，通过改变IO口输出的方波的占空比从而获得使用数字信号模拟成的模拟电压信号
@@ -390,13 +413,112 @@ void Timer0_Routune() interrupt 1 //中断函数，定时器0的中断号为1
 ```
 
 
-
-
-#### 2.3红外模块的使用
 ### 3. L298N电机驱动使用方法
-#### 3.1 利用L298N让电机转起来
-### 5.循迹算法实现
+![在这里插入图片描述](https://img-blog.csdnimg.cn/53ebd4e78b554a8181f7e4521636c9b6.png)4.1 对于ENA、ENB，通道使能引脚。
 
+> 通过将引脚接为高电平或低电平控制接通还是关断，上图就是通过一个跳线帽接到高电平使能。ENA使能左侧电机，ENB使能右侧电机。
+
+4.2 对于逻辑输入引脚IN1、IN2
+
+       控制电机的正反转，将其接在单片机的I/O口上控制即可。
+![在这里插入图片描述](https://img-blog.csdnimg.cn/37a690fabe91471ea08e43ef5e743d8c.png)
+#### 3.1 利用L298N让电机转起来
+①不考虑电机调速：使能引脚ENA置1后，直接对IN1、IN2接高低电平即可，此时电机以最快速度运转。
+
+②考虑电机调速：使能引脚ENA置1后，逻辑控制(IN1、IN2)引脚需要接PWM输出。
+上文已提到如何生产PWM波，希望你能自己完成，当然代码也会在下方贴出。
+
+       i、只进行调速不控制转换方向：IN1→PWM，IN2→GND
+
+       ii、即调速又转换方向：IN1→PWM1，IN2→PWM2。
+
+                正转时让PWM2输出占空比为0的波形(相当于置0)，通过调节PWM1的占空比进行调速；
+
+                反转时让PWM1输出占空比为0的波形(相当于置0)，通过调节PWM2的占空比进行调速；
+            
+            
+下面的程序生产的是50%占空比的PWM波，在L298N IN2和IN4接地后使电机转动
+```c
+#include <reg51.h>
+ 
+#define uint unsigned int
+#define uchar unsigned char
+#define ulong unsigned long
+ 
+uchar Counter = 0, Compare = 5;
+bit Left_moto_stop =1;
+bit Right_moto_stop =1;
+unsigned char pwm_val_left =0;
+unsigned char push_val_left =5; 
+unsigned char pwm_val_right =0;
+unsigned char push_val_right=5;
+
+
+void pwm_out_left_moto(void)     //左电机调速
+{ 
+ if(Left_moto_stop) 
+ { 
+	if(pwm_val_left<=push_val_left) 
+ 	Left_moto_pwm=1; 
+ 	else 
+	Left_moto_pwm=0; 
+ } 
+}
+
+void pwm_out_right_moto(void)   //右电机调速
+{ 
+if(Right_moto_stop) 
+  { 
+	if(pwm_val_right<=push_val_right) 
+	Right_moto_pwm=1; 
+	else 
+	 Right_moto_pwm=0; 
+	}
+}
+
+
+ 
+void Timer0Init(void) //100微秒@12.000MHz
+{
+	TMOD &= 0xF0; //设置定时器模式
+	TMOD |= 0x02; //设置定时器模式
+	TL0 = 0x9C;	  //设置定时初值
+	TH0 = 0x9C;	  //设置定时重载值
+	TF0 = 0;	  //清除TF0标志
+	TR0 = 1;	  //定时器0开始计时
+	ET0 = 1;	  //定时器0中断开关
+	EA = 1;		  //中断总开关
+}
+void main()
+{
+	Timer0Init();
+	while (1)
+	{
+	
+	}
+}
+ 
+void Timer0_Routune() interrupt 1 //中断函数，定时器0的中断号为1
+{
+	push_val_left++;
+	push_val_right++;
+	pwm_out_right_moto();
+	pwm_out_left_moto();
+	if(pwm_val_right>=10) 
+		pwm_val_right=0; 
+	if(pwm_val_left>=10) 
+		pwm_val_left=0; 
+} 
+}
+
+```
+
+
+### 5.循迹算法实现
+循迹原理非常简单
+
+> EYE数组有001 011 111 101 110 100 010 000几种可能
+> 当001时 说明小车偏左，
 
 
 #  第二章 电磁循迹小车设计
@@ -426,7 +548,6 @@ void Timer0_Routune() interrupt 1 //中断函数，定时器0的中断号为1
 原文链接：https://blog.csdn.net/qq_44339029/article/details/106319639
 
 `提示：写完文章后，目录可以自动生成，如何生成可参考右边的帮助文档`
-
 
 
 
