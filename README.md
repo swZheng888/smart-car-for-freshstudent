@@ -592,7 +592,7 @@ int main(void)
     board_init();//务必保留，本函数用于初始化MPU 时钟 调试串口  
     adc_init(ADC_1,ADC_LEFT_CHANNEL,ADC_8BIT);//初始化B14引脚为ADC功能，分辨率为8位  
     adc_init(ADC_1,ADC_RIGHT_CHANNEL,ADC_8BIT);//初始化B15引脚为ADC功能，分辨率为8位 
-	EnableGlobalIRQ(0);  
+    EnableGlobalIRQ(0);  
 
     while (1)  
 
@@ -616,7 +616,7 @@ int main(void)
         ad_sum = ad_left + ad_right;//计算电感之和  
         ad_diff = (int16)ad_left - ad_right;//计算电感之差  
         
-        error = (ad_diff)/(ad_sum+1);//计算差比和数值 并放大一百倍  
+        error = (ad_diff)/(ad_sum+1);//计算差比和数值   
 
  
 
