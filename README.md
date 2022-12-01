@@ -552,6 +552,7 @@ void follow_way()
 ```
 
 #  第二章 电磁循迹小车设计
+本章对于外设驱动不再讲解只降解核心内容
 ## 电感循迹的原理
 ![在这里插入图片描述](https://img-blog.csdnimg.cn/f0473336b5e8437ab73b1ae7db987227.png)
          首先要了解车模位于赛道中的不同位置时所采集的电感数据。参加比赛的同学在学习智能车如何制作前都会先阅读规则，规则中有说明，电磁引导是通过在赛道中心铺设漆包线并通以20khz的交变信号。我们通过中学物理知识可以得知，导线通以交变电流之后会产生交变磁场，电感线圈在交变磁场中会产生交变电压，电感距离导线越近电感产生的电压峰峰值则越大，通过对电感感应出来的电压进行放大并整流可以得到一个直流信号，直流信号电压越高距离导线则越近。需要注意的是电感摆放的位置需要让磁感线能够穿过电感的线圈，这样才能正确的感应到磁场大小。接下来我们根据距离导线越近数值越大的理论来合理的假设电感的数据，然后建立一个表格来分析下数据并使用差比和公式计算结果，**差比和的公式为:(a-b)/(a+b)**。
@@ -602,16 +603,16 @@ int main(void)
         ad_right = adc_mean_filter(ADC_1,ADC_RIGHT_CHANNEL,5);//采集右电感数值 采集5次求平均 
         //为差比和做准备
         if(ad_left>ad_max_left)
-		ad_max_left=ad_left;
-		if(ad_right>ad_max_right)
-		ad_max_right=ad_right; 
-		if(ad_left<ad_max_left)
-		ad_min_left=ad_left; 
-		if(ad_right<ad_min_right)
-		ad_min_right=ad_right; 
-		//进行归一化将数据归于0~100
-		Aad_left =(uint16)(99*(ad_left-ad_min_left)/(ad_max_left-ad_left)+1);
-		Aad_right =(uint16)(99*(ad_right-ad_min_right)/(ad_max_right-ad_right)+1);
+	ad_max_left=ad_left;
+	if(ad_right>ad_max_right)
+	ad_max_right=ad_right; 
+	if(ad_left<ad_max_left)
+	ad_min_left=ad_left; 
+	if(ad_right<ad_min_right)
+	ad_min_right=ad_right; 
+	//进行归一化将数据归于0~100
+	Aad_left =(uint16)(99*(ad_left-ad_min_left)/(ad_max_left-ad_left)+1);
+	Aad_right =(uint16)(99*(ad_right-ad_min_right)/(ad_max_right-ad_right)+1);
 
         ad_sum = ad_left + ad_right;//计算电感之和  
         ad_diff = (int16)ad_left - ad_right;//计算电感之差  
@@ -620,7 +621,7 @@ int main(void)
 
  
 
-        }  
+        
 
     }  
 
