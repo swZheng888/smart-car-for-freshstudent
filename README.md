@@ -1,4 +1,4 @@
-@[TOC](文章目录)
+
 
 ---
 # 智能车入门到进门
@@ -552,8 +552,8 @@ void follow_way()
 ```
 
 #  第二章 电磁循迹小车设计
-本章对于外设驱动不再讲解只降解核心内容
-## 电感循迹的原理
+## 2.1电感循迹的原理
+### 差比和算法引入
 ![在这里插入图片描述](https://img-blog.csdnimg.cn/f0473336b5e8437ab73b1ae7db987227.png)
          首先要了解车模位于赛道中的不同位置时所采集的电感数据。参加比赛的同学在学习智能车如何制作前都会先阅读规则，规则中有说明，电磁引导是通过在赛道中心铺设漆包线并通以20khz的交变信号。我们通过中学物理知识可以得知，导线通以交变电流之后会产生交变磁场，电感线圈在交变磁场中会产生交变电压，电感距离导线越近电感产生的电压峰峰值则越大，通过对电感感应出来的电压进行放大并整流可以得到一个直流信号，直流信号电压越高距离导线则越近。需要注意的是电感摆放的位置需要让磁感线能够穿过电感的线圈，这样才能正确的感应到磁场大小。接下来我们根据距离导线越近数值越大的理论来合理的假设电感的数据，然后建立一个表格来分析下数据并使用差比和公式计算结果，**差比和的公式为:(a-b)/(a+b)**。
 ![在这里插入图片描述](https://img-blog.csdnimg.cn/f0547d4f932a4355906e0ce70aa2bd34.png)
@@ -562,9 +562,9 @@ void follow_way()
 我们会发现，车模距离赛道中心线的距离变近之后差比和计算出来的绝对值也就变小了。因此数值大小表示偏离赛道的程度，在一定范围内车模偏离赛道越远计算出来的值越大。得到了车模偏离赛道的程序之后我们就可以用此数据控制舵机，来使得车模一直沿着赛道中心线前进了
 
 
-## 电感数据采集
+### 2.2电感数据采集
 通过adc采集的函数uint16 adc_mean_filter(ADCN_enum adc, ADCCH_enum ch, uint8 count)；我们确定了用哪个通道，和采集次数，采样率一般是固定的，也可以自己改，我的电感采集是12位，也就是0~4096，但是在实际赛道上采样的值不会超过3600，一定要注意不要将原始的值调到满幅值。这里推荐的方法是：第一步，将车放到环岛四条线交叉（或者环岛两条（因为今年是铺了两圈）），调节电磁（与四条线垂直的地方）在此时稍微调小电位器，电磁值会有减小，调大值几乎不变（即几乎为最大值），左右横电感都是这样，粗调结束（记录此时的最大值）；第二步，将电感放在直赛道上，将电感和电磁线垂直放置，此时最大值为之前最大值的90%以下，要是不到的话就调小，然后把车放在赛道上，保证在赛道最中间（此时电磁线是在两横电感连线中线上），将一侧作为基准，调节另一侧使值相差在（最大值-0）的千分之一内（这样是最好的，但是和你的精度有关，我最大是3600左右，两边值的原始差在5左右）。这样横电感的调节结束；向外的v形电感，在环岛处的较易获得的值是其他元素最大时都无法达到的值即可（就是你在环岛那从预环岛开始稍微转车，或者接近环岛时车即使有些偏移也可以得到的值，但是其他元素这么转都很难得到的值）。内v形电感和水平电感处理类似。具体原因的话，我在元素判断中解释。
-## 电感数据处理
+### 2.3电感数据处理及代码
 1.归一化
 就是用第一步采集的最大值（左右对称的电感用同一个），用adc采集的值ADC_value。进行 ADC_value/max*100,将值变道0~100的区间内。这样做的好处是，1、可以方便自己对数据的感知，在普通元素和特殊元素间；2、在赛道更换后，测新的赛道的最大值，改变max的值即可，有较强的适应性。3、方便数据处理。
 
@@ -593,7 +593,7 @@ int main(void)
     board_init();//务必保留，本函数用于初始化MPU 时钟 调试串口  
     adc_init(ADC_1,ADC_LEFT_CHANNEL,ADC_8BIT);//初始化B14引脚为ADC功能，分辨率为8位  
     adc_init(ADC_1,ADC_RIGHT_CHANNEL,ADC_8BIT);//初始化B15引脚为ADC功能，分辨率为8位 
-    EnableGlobalIRQ(0);  
+	EnableGlobalIRQ(0);  
 
     while (1)  
 
@@ -603,25 +603,25 @@ int main(void)
         ad_right = adc_mean_filter(ADC_1,ADC_RIGHT_CHANNEL,5);//采集右电感数值 采集5次求平均 
         //为差比和做准备
         if(ad_left>ad_max_left)
-	ad_max_left=ad_left;
-	if(ad_right>ad_max_right)
-	ad_max_right=ad_right; 
-	if(ad_left<ad_max_left)
-	ad_min_left=ad_left; 
-	if(ad_right<ad_min_right)
-	ad_min_right=ad_right; 
-	//进行归一化将数据归于0~100
-	Aad_left =(uint16)(99*(ad_left-ad_min_left)/(ad_max_left-ad_left)+1);
-	Aad_right =(uint16)(99*(ad_right-ad_min_right)/(ad_max_right-ad_right)+1);
+		ad_max_left=ad_left;
+		if(ad_right>ad_max_right)
+		ad_max_right=ad_right; 
+		if(ad_left<ad_max_left)
+		ad_min_left=ad_left; 
+		if(ad_right<ad_min_right)
+		ad_min_right=ad_right; 
+		//进行归一化将数据归于0~100
+		Aad_left =(uint16)(99*(ad_left-ad_min_left)/(ad_max_left-ad_left)+1);
+		Aad_right =(uint16)(99*(ad_right-ad_min_right)/(ad_max_right-ad_right)+1);
 
         ad_sum = ad_left + ad_right;//计算电感之和  
         ad_diff = (int16)ad_left - ad_right;//计算电感之差  
         
-        error = (ad_diff)/(ad_sum+1);//计算差比和数值   
+        error = (ad_diff)/(ad_sum+1);//计算差比和数值 并放大一百倍  
 
  
 
-        
+        }  
 
     }  
 
@@ -632,7 +632,7 @@ int main(void)
 
 
 
-## 位置式PID算法及参数整定
+## 位置式PID算法及参数整定（重点）
 ## 增量式PID算法及参数整定
 
 #  第三章 摄像头循迹小车
