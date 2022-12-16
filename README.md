@@ -1,5 +1,6 @@
 
 
+
 ---
 # 智能车入门到进门
 
@@ -628,20 +629,858 @@ int main(void)
   
 ```
 
+## PID算法及参数整定
+### 2.4PID控制算法原理介绍
+
+啥是PID？   PID可以吃吗？
+PID，就是“**比例（proportional）、积分（integral）、微分（derivative）**”，是一种很常见的控制算法。算法是不可以吃的。PID已经有105年的历史了它并不是什么很神圣的东西，大家一定都见过PID的实际应用——比如四轴飞行器，再比如平衡小车......还有汽车的定速巡航、3D打印机上的温度控制器....再比如动物园里的海狮，将一根杆子直立着顶在头上（OOPS，这个也算..）
+就是类似于这种：需要将某一个物理量“保持稳定”的场合（比如维持平衡，稳定温度、转速等），PID都会派上大用场。
+
+那么问题来了：
+  比如，我想控制一个“热得快”，让一锅水的温度保持在50℃  
+这么简单的任务，为啥要用到微积分的理论呢你一定在想：
+这不是so easy嘛~  小于50度就让它加热，大于50度就断电，不就行了？几行代码用Arduino分分钟写出来
+
+没错~在要求不高的情况下，确实可以这么干~  But！  如果LZ换一种说法，你就知道问题出在哪里了：
+
+如果我的控制对象是一辆汽车呢？
+要是希望汽车的车速保持在50km/h不动，你还敢这样干么
+
+设想一下，假如汽车的定速巡航电脑在某一时间测到车速是45km/h。它立刻命令发动机：加速！
+结果，发动机那边突然来了个100%全油门，嗡的一下，汽车急加速到了60km/h。这时电脑又发出命令：刹车！
+结果，吱...............哇............(乘客吐)
+
+所以，在大多数场合中，用“开关量”来控制一个物理量，就显得比较简单粗暴了。有时候，是无法保持稳定的。因为单片机、传感器不是无限快的，采集、控制需要时间。
+而且，控制对象具有惯性。比如你将一个加热器拔掉，它的“余热”（即热惯性）可能还会使水温继续升高一小会。
+
+这时，就需要一种『算法』：
+ 
+
+它可以将需要控制的物理量带到目标附近
+它可以“预见”这个量的变化趋势
+它也可以消除因为散热、阻力等因素造成的静态误差
+参数效果具体可看http://t.csdn.cn/u9CVx
+于是，当时的数学家们发明了这一历久不衰的算法——这就是PID。
+PID：比例单元（P）、积分单元（I）和微分单元（D）组成
+![在这里插入图片描述](https://img-blog.csdnimg.cn/3e63eba7be444a2c8dc721b86539235c.png)
+PID控制公式
+![在这里插入图片描述](https://img-blog.csdnimg.cn/753fa0a1281747779f47f66f6e5fed91.png)
+
+其中：u(t)为控制器输出的控制量；（输出）
+
+**e(t)**为偏差信号，它等于给定量与输出量之差；（输入）
+
+**KP** 为比例系数；（对应参数 P）
+
+**TI** 为积分时间常数；（对应参数I）
+
+**TD** 为微分时间常数。(对应参数 D) 
+
+ 
+
+数字 PID 控制算法通常分为位置式 PID 控制算法和增量式 PID 控制算法。  
+
+**位置式 PID 算法 :**
+![在这里插入图片描述](https://img-blog.csdnimg.cn/b4765b63ee034d769ef5c73965454037.png)
+
+ **e(k)**: 用户设定的值（目标值） -  控制对象的当前的状态值 
+
+**比例P** :    e(k)
+
+**积分I** :   ∑e(i)     误差的累加
+
+**微分D** :  e(k) - e(k-1)  这次误差-上次误差
+
+也就是位置式PID是当前系统的实际位置，与你想要达到的预期位置的偏差，进行PID控制
+
+因为有误差积分 ∑e(i)，一直累加，也就是当前的输出u(k)与过去的所有状态都有关系，用到了误差的累加值；（误差e会有误差累加），输出的u(k)对应的是执行机构的实际位置，，一旦控制输出出错(控制对象的当前的状态值出现问题 )，u(k)的大幅变化会引起系统的大幅变化
+
+**并且位置式PID在积分项达到饱和时,误差仍然会在积分作用下继续累积，一旦误差开始反向变化，系统需要一定时间从饱和区退出，所以在u(k)达到最大和最小时，要停止积分作用，并且要有积分限幅和输出限幅**
+
+所以在使用位置式PID时，一般我们直接使用PD控制
+
+而位置式 PID 适用于执行机构不带积分部件的对象，如舵机和平衡小车的直立和温控系统的控制
+
+结合代码可以很好理解
+### 位置式PID示例代码
+
+```css
+typedef struct PID
+{ 
+  float P,I,D,limit;
+}PID;
+ 
+typedef struct Error
+{
+  float Current_Error;//当前误差
+  float Last_Error;//上一次误差
+  float Previous_Error;//上上次误差
+}Error;
+ 
+/*! 
+ *  @brief      位置式PID
+ *  @since      v1.0
+ *  *sptr ：误差参数
+ *  *pid:  PID参数
+ *  NowPlace：当前位置
+ *  Point：   预期位置  
+ */
+ 
+// 位置式PID控制
+float PID_Realize(Error *sptr,PID *pid, int32 NowPlace, float Point)
+{
+ 
+	int32 iError,	// 当前误差
+		 Realize;   //实际输出	
+ 
+	iError = Point - NowPlace;	// 计算当前误差
+	sptr->Current_Error += pid->I * iError;	// 误差积分
+    sptr->Current_Error = sptr->Current_Error > pid->limit?pid->limit:sptr->Current_Error;//积分限幅
+    sptr->Current_Error = sptr->Current_Error <-pid->limit?-pid->limit:sptr->Current_Error;
+	Realize = pid->P * iError       //比例P
+    + sptr->Current_Error   //积分I
+    + pid->D * (iError - sptr->Last_Error);  //微分D
+	sptr->Last_Error = iError;		  	// 更新上次误差
+	return Realize;	// 返回实际值
+}
+```
 
 
+（引用卓晴老师的文章进行说明具体可看：http://t.csdn.cn/QLah8）
+![在这里插入图片描述](https://img-blog.csdnimg.cn/a826db17830a41f9b58b6f7b73229f54.gif#pic_center)
+将驱动电机进行简化，考虑它的转速与施加电压成正比，因此转动角度位置就是转速的积分。所以对象是一个一阶积分惯性系统。
 
+使用普通的比例控制就可以完成无误差跟踪随着比例系数增加，跟踪速度也会提高，但是也会出现过冲震荡现象
+ **只使用比例控制的情况：**
+![只使用比例控制的情况](https://img-blog.csdnimg.cn/4b28e4043c5041899099fab06e9ac4da.gif#pic_center)
+加入位置的微分（也就是转速）项可以消除震荡。如果微分项过大，会使得位置跟踪变缓慢。特别由于静摩擦力的存在，有可能会使得位置跟踪出现小的偏差。
+**加入微分项，可以消除震荡：**
+                    ![在这里插入图片描述](https://img-blog.csdnimg.cn/34b21a7858c7403b9dc1bbae725aec08.gif#pic_center)
+                    加入积分项，可以将由于系统的静态摩擦所产生的位置偏差彻底消除。但也会增加系统的震荡倾向。所以此时需要综合调整积分、微分的比例系数
+**只使用I,D控制的效果：**
+![在这里插入图片描述](https://img-blog.csdnimg.cn/4dd39ed82b804222852b875de3bfb555.gif#pic_center)
+综合调整PID的系数，可以使得系统跟踪既快又稳。
 
-## 位置式PID算法及参数整定（重点）
-## 增量式PID算法及参数整定
+在很多教科书中也会给出一定的调整顺序，或者给出通过系统的单位阶跃响应曲线来定量计算最优的PID参数方法。
+![在这里插入图片描述](https://img-blog.csdnimg.cn/3718478f23fc48c69d56f07a6deff85b.png)
+ **综合利用PID达到快速稳定的效果：**![在这里插入图片描述](https://img-blog.csdnimg.cn/cdc349f70d604c65be14f4c1340ea93e.gif#pic_center)
+
+### 增量式PID示例代码
+
+```css
+//根据增量式离散PID公式 
+//pwm+=Kp[e（k）-e(k-1)]+Ki*e(k)+Kd[e(k)-2e(k-1)+e(k-2)]
+//e(k)代表本次偏差 
+//e(k-1)代表上一次的偏差  以此类推 
+//e(k-2)代表上上次的偏差
+//pwm代表增量输出
+ 
+typedef struct PID
+{ 
+  float kp;
+  float ki;
+  float kd;
+  float ek;     //当前误差
+  float ek_1;   //上一次误差
+  float ek_2;   //上上一次误差
+  float limit;  //限幅
+}PID;
+ 
+static PID pid;
+ 
+void PID_Init()
+{
+    pid.kp = 0.1;
+    pid.ki = 0.2;
+    pid.kd = 0.3;
+    pid.limit = 1000;
+    pid.ek = 0;
+    pid.ek_1 = 0;
+    pid.ek_2 = 0;
+}
+ 
+// 增量式PID控制
+float PID_Increase(int Encoder,int Target)
+{
+    float pwm = 0;
+    pid.ek = Target - Encoder; // 计算当前误差
+    pid.ek_sum += pid.ek;      //求出偏差的积分
+    pwm = pid.kp*（pid.ek - pid.ek_1) + pid.ki*pid.ek + pid.kd*(pid.ek - 2*pid.ek_1 + pid.ek_2);   //增量式PID控制器
+    pid.ek_1 = pid.ek;   //保存上一次偏差 
+    pid.ek_2 = pid.ek_1; //保存上上一次的偏差
+    if(pwm > pid.limit)
+    {
+      pwm =  pid.limit;
+    }
+    else if(pwm < -pid.limit)
+    {
+      pwm =  -pid.limit;
+    }
+    return pwm;
+}
+```
 
 #  第三章 摄像头循迹小车
 ### 摄像头循迹的原理
-### 摄像头数据采集
+搜寻赛道边界得到中线提取与中线的偏差进行控制实现循迹
+ 关于摄像头循迹，一般都是按照获取赛道中线，根据赛道中线来进行循迹的。如何获得赛道中线，我来简单介绍一下。我们知道中线是按照左右边线获得的
+ 中线 = （左边线+右边线）/2 
+ 而左右边线我们则需要在图像中进行处理获得，这个过程就是下面要讲的边界搜寻。
 ### 图片数据二值化方法
+二值化的方法：
+1.设定固定阈值，大于阈值设定255白色，小于阈值设定0黑色。
+2.通过OLED打印（串口比较费时间），通过按键对阈值进行调整（设置按键的外部引脚中断）。3.利用大津法（遍历每个阈值，通过方差使黑白的差异达到最大化）。
+4.利用差比和的方法
+在搜寻边界前我们往往要对图像进行预二值化，对于刚入门的同学可以先使用最基础的固定阈值法来进行处理
+
+```css
+void threshold(uint8_t *img_data, uint8_t *output_data, int width, int height, int thres){
+  for(int y=0; y<height; y++){
+    for(int x=0; x<width; x++){
+      output_data[x+y*width] = img_data[x+y*width]>thres ? 255 : 0;
+    }
+  }
+}
+```
+
 ### 搜寻边界的方法
-### 赛道特殊元素的识别
-### 模糊PID算法及参数整定
+这里推荐使用种子生长的方法进行边界提取可以大幅度减少运算量，详细原理说明可见：[八邻域与种子生长算法](https://blog.csdn.net/sinat_31425585/article/details/78558849?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522164248750616781685368231%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=164248750616781685368231&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-1-78558849.first_rank_v2_pc_rank_v29&utm_term=%E5%85%AB%E9%82%BB%E5%9F%9F)
+
+不了解八邻域的先搜索了解一下，这里主要讲如何在运用在智能车上，
+首先我的图像坐标系的原点是在左上角，向下行越来越大，向右列越来越大；
+然后左右是分开扫线的，先扫左还是先扫右暂时都可以，这里以左边界为例；
+直接处理原图像数组，只需要开一个image_buffer[120*188]用来存边界点。
+我们从图像的左下角开始向上寻找左边界，比如图像的左下角是这样的
+原文链接：https://blog.csdn.net/m0_66478571/article/details/122557273
+![在这里插入图片描述](https://img-blog.csdnimg.cn/79f06039febe4c34b3fa4e586695c3b4.png)
+### 八邻域搜线示例代码
+```c
+				tra_flag = true;
+				//将边界点设为灰色
+				image_buffer[Current_Row][Current_Col]=Left_Border_Point;
+				//开始搜索
+				while(tra_flag&&traverse_times1<300)
+				{
+					// 循环八次
+					for (counts = 0; counts < 8; counts++)
+					{
+						// 防止索引出界
+						if (curr_d >= 8)
+						{
+							curr_d -= 8;
+						}
+						if (curr_d < 0)
+						{
+							curr_d += 8;
+						}
+						
+						Current_Point_Row = Current_Row+Pointdirections_L[curr_d][0];
+						Current_Point_Col = Current_Col+Pointdirections_L[curr_d][1];
+						
+						//图像边界检测
+						if((Current_Point_Row>0&&Current_Point_Row<ROW-1)&&
+							(Current_Point_Col>=0&&Current_Point_Col<COL-1))
+							{
+								//找到下一个边界点
+//								if(image_buffer[Current_Point_Row][Current_Point_Col]==Black)
+//								{
+								if(_Point_CBH(Current_Point_Row,Current_Point_Col)&&image_buffer[Current_Point_Row][Current_Point_Col]!=Left_Border_Point)
+								{
+									Current_Row=Current_Point_Row; //更新行
+									Current_Col=Current_Point_Col; //更新列
+									
+									L_Line[Current_Row]=Current_Row<L_Highest_Row?Current_Col:L_Line[Current_Row];
+											
+									//扫线点数量限制 除非横向的点否则都会加一
+									if(curr_d!=0&&curr_d!=4){
+										L_Astrict_Num++;
+									}
+									if(L_Astrict_Num>=90){
+										return Current_Row;
+									}
+									
+									这一行是图像处理相关的，通过记录每一步的生长方向来分辨各个元素_L_Deal_Growth_Direction(curr_d);  
+									
+									last_curr_d=curr_d+4<7?curr_d+4:curr_d-4;  //更新上次方向
+									curr_d -=2; //更新方向
+									
+									image_buffer[Current_Row][Current_Col]=Left_Border_Point;  //边线点赋值
+									
+									if(Current_Col!=0)
+										sideline_points++;
+									break;
+								}
+								//判断是否超出检测边界
+								if(Current_Row<=minrow||Current_Col>=maxcol)
+								{
+									return Current_Row;
+								}
+								//如果找到的边界点足够多，就认为找到了边界
+								if(sideline_points>15)
+								{
+									is_search_sideline=true;
+								}
+								//如果找到的边界点超过范围就退出
+								if(sideline_points>200)
+								{
+									
+									return Current_Row;
+								}
+								
+								//防止大弯道再次到达底部扫线
+								if(L_Highest_Row<=ROW-25&&Current_Row>=ROW-8)
+									{
+									return Current_Row;
+								}
+								
+							}
+							
+						curr_d++;
+					}
+					
+					if(counts==8)
+					{
+						curr_d = 0;
+						tra_flag = false;
+						Current_Col=Current_Col-1;
+						is_counts_flag=1;
+						
+						if(is_search_sideline)
+						{
+							//返回断点行
+							return Current_Row;
+						}
+						else
+							{
+							break;
+						}
+						
+					}
+					
+					//如果在搜左边界时，当前行大于COL-10 ，就退出
+					if((Current_Col>COL-10)||(Current_Col==0)){
+						if(is_search_sideline)
+						{ 
+							L_The_Outer_Point_1.flag=1;
+							L_The_Outer_Point_1_border_Row=Current_Row;
+							if(Crossroad_Flag!=1&&L_Island_Flag!=2&&L_Island_Flag!=3&&L_Island_Flag!=4&&L_Island_Flag!=6&&L_Island_Flag!=7&&!junction_L){
+								L_End_Point.row=Current_Row; 
+								return Current_Row;
+							}
+						}
+					}
+
+					traverse_times1++;
+				}
+			}
+
+```
+## 赛道元素判断及处理
+### 1.十字元素
+#### 正入十字
+1）判断条件
+二值图：![在这里插入图片描述](https://img-blog.csdnimg.cn/4a9d7e2bbf954332b4b9b65706e0cd1d.png)
+
+①找到左前拐点
+②左边线向左横向生长像素点较多
+③找到右前拐点
+④右边线向右横向生长像素点较多
+
+2）拉线处理
+①十字前
+分别将左右前后两个拐点相连
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2279c40d69b8484a91ef1aac0e45e8a2.png)
+②十字中
+找到两个后拐点，利用最小二乘法前拉边线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/1945cdf69912476d9caa25e74e3188bf.png)
+
+
+#### 斜入十字（举一种情况）
+1）判断条件
+二值图：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/619d3aeaf04c48e9b56a0a05a0c53366.png)
+
+
+边界图：
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2e17e627af6a4a8ca34b6757a8fa0073.png)
+
+①找到右前拐点
+②右前边界向右横向生长的点数较多
+③找到右后拐点
+④找到左后拐点
+
+2）拉线处理
+①将右边两个拐点相连
+②利用最小二乘法前拉左后拐点高行的直线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/60606a2287c842389f93e5a420f23577.png)
+
+
+### 2.环岛元素
+1）判断条件
+以左环岛为例
+二值图：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/0f1aec33e7a741e1b1acefa1c4bb4595.png)
+
+
+边界：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/5e4e96b71750450ab589683e53feb08e.png)
+
+
+①左拐点
+②左前边线横向生长的点较多
+③右边界从底行到高行为直线，方差很小
+判断条件较为简单，如果不放心，可以再提取左上圆环特征
+
+2）拉线处理
+整个环岛处理为一个状态机，大致拉线如下：
+①左前直角型拐点与左后圆弧形拐点相连
+![在这里插入图片描述](https://img-blog.csdnimg.cn/64b8e5915de94c3eb7cb0e617f2fc516.png)
+
+
+②左后圆弧形拐点拉线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/0e7f6bb95b5a487cb9b27090998ca946.png)
+
+③入环拐点拉到右边低行
+![在这里插入图片描述](https://img-blog.csdnimg.cn/1c05fe703b8e45269a586ed0492fb972.png)
+
+④环内正常边线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/d3d8d7cddd4a4f0dbd8aacfddd65fe65.png)
+
+⑤开始出环先拉右线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/dff10b87ca90440fbbf084b1d84dcbc9.png)
+
+⑥左后拐点与左前边线起始处相连
+![在这里插入图片描述](https://img-blog.csdnimg.cn/d39e0a372bf64f0f862458e64cc1a248.png)
+
+⑦二乘法将左后拐点拟线前拉
+![在这里插入图片描述](https://img-blog.csdnimg.cn/4a9c90b8c53d47a5b3c6139a24a0d8c1.png)
+
+
+#### 3.车库元素
+入车库
+1）判断条件
+二值图：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/25264de3d9dd4594b4eddec7667179c9.png)
+
+边界图：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/e7b6297255b347e3b96bb3fdb9c700ac.png)
+
+
+①找到左前拐点
+②右边界为直线，方差较小
+③扫到斑马线
+④横向生长的点数较多（或左前拐点后的边界斜率很小很小）
+
+2）拉线处理
+①将左后拐点拉到左前拐点纵坐标位置的右边线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/c26ad2e4c8894514b00df088b6fadba5.png)
+
+②将左后边线的起始位置拉到右下角
+![在这里插入图片描述](https://img-blog.csdnimg.cn/8d3ab1e40ddc43d988b264c968563d9a.png)
+
+③当左后拐点小于一定行数，利用最小二乘法将左后拐点的线拟合到右下角
+![在这里插入图片描述](https://img-blog.csdnimg.cn/9b352dd841474df5ba63067ee0fa0d27.png)
+
+④进入车库，正常扫线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/9ae6271fbcaa4a68952753fe020220d6.png)
+
+
+
+出车库
+1）判断条件
+无需判断，手动预设
+
+2）拉线处理（以右出库为例）
+①在库内，拉直线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/2ca13e65952c46c08af0565095e36cd1.png)
+
+
+②左前拐点小于某行或丢失，开始拉线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/9d1f7ca14dd143c0ba2c89ee50a1b3ca.png)
+
+
+③避开斑马线进行扫线，直接拉到左下角
+![在这里插入图片描述](https://img-blog.csdnimg.cn/5b890aba1fcd4332917114001e5335e1.png)
+
+④出库基本完成，正常扫线
+![在这里插入图片描述](https://img-blog.csdnimg.cn/66b013bea6bc4ac4bd7bbaef31b7d857.png)
+原文链接：https://blog.csdn.net/LeviKing98/article/details/107902795### 赛道特殊元素的识别
+
+## 模糊PID算法及参数整定
+### 一. 模糊PID原理
+参考：[模糊PID控制原理](https://blog.csdn.net/weixin_45636061/article/details/124996230)  [快速理解模糊PID](%E5%8E%9F%E6%96%87%E9%93%BE%E6%8E%A5%EF%BC%9Ahttps://blog.csdn.net/m0_46451722/article/details/113765472)
+模糊PID控制流程如下图所示，把目标值 Xtarget 与输出值 Xout 的误差 e 与 e 的变化率 de/dt 作为模糊控制器的输入，模糊控制器先对输入进行模糊化处理，接着进行模糊推理，最后把模糊推理的结果进行去模糊处理输出PID控制器的三个参数 kp, ki, kd，从而达到对PID控制器参数自适应整定的效果。
+![在这里插入图片描述](https://img-blog.csdnimg.cn/0c6f57f0394b43a480e4cfb5a676a6d4.png)模糊控制就是通过
+
+**1. 模糊化
+2. 模糊推理
+3. 去模糊化**
+
+三个过程来实现的
+
+下面以一个两输入单输出的值为例介绍模糊控制的过程
+
+#### 1.模糊化
+模糊化其实有点像划范围
+
+例如控制平衡车时，小车向前倾和向后倾的角度是有正负性的
+
+小车总会在 （- 9 0 ， + 9 0 ） 这个区间内摇摆
+
+设定 0 °为目标值
+
+所以我们的误差总会在 （- 9 0 ， + 9 0 ） 之间波动（夸张，便于理解）
+
+我们把这个区间分成六等份
+
+并给这几个等份的界线（模糊论域）取个名字
+
+
+|NB|NM  |NS|Z0|PS|PM|PB|
+|--|--|--|-|-|-|-|
+| -90	 |-60  |-30|0|30|60|90|
+
+其中
+**N代表Negative
+P代表Positive
+B代表Big，大
+M代表Middle，中
+S代表Small，小**
+
+#### 模糊推理
+划好范围了
+
+我们就可以引出另一个概念:
+**隶属度**
+在介绍隶属度之前，我们先用一个实际误差为例
+
+假设此时的误差为 70°
+
+那么它与 PB(90°) 的距离为 20°
+
+与PM(60°) 的距离为10°
+
+那么此时 这个误差
+
+对于PB的隶属度就是 20/（90 - 60）=2/3
+
+对于PM的隶属度就是 10/（90 - 60）=1/3
+
+到这就可以理解隶属度就是用来计量某个数据隶属与哪一个边界的这一概念了
+
+所以模糊推理，即根据 e 与 de/dt 的隶属度进行查表得到输出的大小程度，即 NB，NS 等。所以模糊推理的核心工作是建立推理表。其中模糊PID常用的推理表如下图所示：![在这里插入图片描述](https://img-blog.csdnimg.cn/38109f015ca94609bddc9bfd467db14a.png)
+![在这里插入图片描述](https://img-blog.csdnimg.cn/90e29d431e014c3ba24d6e3a6016a1a9.png)
+![在这里插入图片描述](https://img-blog.csdnimg.cn/fadaeeb7369949978f4722ee4b4d03ec.png)
+以下以一个例子说明规则表的使用方法。
+
+假设此刻的输入 e 为8，de/dt 为-12，而e的范围为[-10,10]，de/dt 的范围为[-20,20]。则通过模糊化得到 e 的隶属度为0.6(PM)与0.4(PB)，de/dt 的隶属度为0.8(NM)与0.2(NS)，然后，对 e 与 de/dt 的隶属度进行两两组合，并进行查表，得到下表的关系：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/47997f0c3a214c2491793fcccdb03fe3.png)接着，计算各输出 Kp, Ki, Kd 的隶属度。
+
+以Kp为例:
+![在这里插入图片描述](https://img-blog.csdnimg.cn/6df49ee7563246d0a68d93c556997a85.png)
+#### 去模糊
+去模糊是根据模糊推理得到的各输出的隶属度算出输出在论域中的哪个值，然后根据区间映射关系，得到输出。
+
+1.3.1 计算输出在论域中的值
+以上面的例子进行阐述计算的过程。由上面可知，Kp 的隶属度为0.8(ZO)，0.12(NS)，0.08(NM), 而在论域讲解时，已经将 ZO 的值定为0，NS 的值定为-1，NM 的值定为-2。那么 Kp 的期望为：
+![在这里插入图片描述](https://img-blog.csdnimg.cn/cdda14ec4a3c4e088a2b77f37f00e177.png)
+
+把期望作为 Kp 在论域的值，在确定 Kp 的范围后，根据区间映射公式，可得出 Kp 的输出值。
+#### 模糊控制PID示例代码
+fuzzyPID_H
+```c
+#ifndef FuzzyPID_H
+#define FuzzyPID_H
+class FuzzyPID
+{
+public:
+    FuzzyPID();
+    ~FuzzyPID();
+    void Get_grad_membership(float erro, float erro_c);
+    float Quantization(float maximum, float minimum, float x);
+    float Inverse_quantization(float maximum, float minimum, float qvalues);
+    void GetSumGrad();
+    void GetOUT();
+    float FuzzyPIDcontroller(float e_max, float e_min, float ec_max, float ec_min, float kp_max, float kp_min, float erro, float erro_c, float ki_max, float ki_min,float kd_max, float kd_min,float erro_pre, float errp_ppre);
+    const int  num_area = 8; //划分区域个数
+    //float e_max;  //误差做大值
+    //float e_min;  //误差最小值
+    //float ec_max;  //误差变化最大值
+    //float ec_min;  //误差变化最小值
+    //float kp_max, kp_min;
+    float e_membership_values[7] = {-3,-2,-1,0,1,2,3}; //输入e的隶属值
+    float ec_membership_values[7] = { -3,-2,-1,0,1,2,3 };//输入de/dt的隶属值
+    float kp_menbership_values[7] = { -3,-2,-1,0,1,2,3 };//输出增量kp的隶属值
+    float ki_menbership_values[7] = { -3,-2,-1,0,1,2,3 }; //输出增量ki的隶属值
+    float kd_menbership_values[7] = { -3,-2,-1,0,1,2,3 };  //输出增量kd的隶属值
+    float fuzzyoutput_menbership_values[7] = { -3,-2,-1,0,1,2,3 };
+
+    //int menbership_values[7] = {-3,-};
+    float kp;                       //PID参数kp
+    float ki;                       //PID参数ki
+    float kd;                       //PID参数kd
+    float qdetail_kp;               //增量kp对应论域中的值
+    float qdetail_ki;               //增量ki对应论域中的值
+    float qdetail_kd;               //增量kd对应论域中的值
+    float qfuzzy_output;  
+    float detail_kp;                //输出增量kp
+    float detail_ki;                //输出增量ki
+    float detail_kd;                //输出增量kd
+    float fuzzy_output;
+    float qerro;                    //输入e对应论域中的值
+    float qerro_c;                  //输入de/dt对应论域中的值
+    float errosum;                  
+    float e_gradmembership[2];      //输入e的隶属度
+    float ec_gradmembership[2];     //输入de/dt的隶属度
+    int e_grad_index[2];            //输入e隶属度在规则表的索引
+    int ec_grad_index[2];           //输入de/dt隶属度在规则表的索引
+    float gradSums[7] = {0,0,0,0,0,0,0};
+    float KpgradSums[7] = { 0,0,0,0,0,0,0 };   //输出增量kp总的隶属度
+    float KigradSums[7] = { 0,0,0,0,0,0,0 };   //输出增量ki总的隶属度
+    float KdgradSums[7] = { 0,0,0,0,0,0,0 };   //输出增量kd总的隶属度
+    int NB = -3, NM = -2, NS = -1, ZO = 0, PS = 1, PM = 2, PB = 3; //论域隶属值
+
+    int  Kp_rule_list[7][7] = { {PB,PB,PM,PM,PS,ZO,ZO},     //kp规则表
+                                {PB,PB,PM,PS,PS,ZO,NS},
+                                {PM,PM,PM,PS,ZO,NS,NS},
+                                {PM,PM,PS,ZO,NS,NM,NM},
+                                {PS,PS,ZO,NS,NS,NM,NM},
+                                {PS,ZO,NS,NM,NM,NM,NB},
+                                {ZO,ZO,NM,NM,NM,NB,NB} };
+
+    int  Ki_rule_list[7][7] = { {NB,NB,NM,NM,NS,ZO,ZO},     //ki规则表
+                                {NB,NB,NM,NS,NS,ZO,ZO},
+                                {NB,NM,NS,NS,ZO,PS,PS},
+                                {NM,NM,NS,ZO,PS,PM,PM},
+                                {NM,NS,ZO,PS,PS,PM,PB},
+                                {ZO,ZO,PS,PS,PM,PB,PB},
+                                {ZO,ZO,PS,PM,PM,PB,PB} };
+
+    int  Kd_rule_list[7][7] = { {PS,NS,NB,NB,NB,NM,PS},    //kd规则表
+                                {PS,NS,NB,NM,NM,NS,ZO},
+                                {ZO,NS,NM,NM,NS,NS,ZO},
+                                {ZO,NS,NS,NS,NS,NS,ZO},
+                                {ZO,ZO,ZO,ZO,ZO,ZO,ZO},
+                                {PB,NS,PS,PS,PS,PS,PB},
+                                {PB,PM,PM,PM,PS,PS,PB} };
+
+    int  Fuzzy_rule_list[7][7] = { {PB,PB,PB,PB,PM,ZO,ZO},  
+                                   {PB,PB,PB,PM,PM,ZO,ZO},
+                                   {PB,PM,PM,PS,ZO,NS,NM},
+                                   {PM,PM,PS,ZO,NS,NM,NM},
+                                   {PS,PS,ZO,NM,NM,NM,NB},
+                                   {ZO,ZO,ZO,NM,NB,NB,NB},
+                                   {ZO,NS,NB,NB,NB,NB,NB}};
+
+
+//private:
+
+};
+#endif
+
+```
+FuzzyPID_H
+
+```c
+#include "FuzzyPID.h"
+FuzzyPID::FuzzyPID()  //构造函数
+{
+    kp = 0;
+    ki = 0;
+    kd = 0;
+    fuzzy_output = 0;
+    qdetail_kp = 0;
+    qdetail_ki = 0;
+    qdetail_kd = 0;
+    qfuzzy_output = 0;
+    errosum = 0;
+}
+
+FuzzyPID::~FuzzyPID()//析构函数
+{
+}
+
+//输入e与de/dt隶属度计算函数///
+void FuzzyPID::Get_grad_membership(float erro,float erro_c)  
+{
+    if (erro > e_membership_values[0] && erro < e_membership_values[6])
+    {
+        for (int i = 0; i < num_area - 2; i++)
+        {
+            if (erro >= e_membership_values[i] && erro <= e_membership_values[i + 1])
+            {
+                e_gradmembership[0] = -(erro - e_membership_values[i + 1]) / (e_membership_values[i + 1] - e_membership_values[i]);
+                e_gradmembership[1] = 1+(erro - e_membership_values[i + 1]) / (e_membership_values[i + 1] - e_membership_values[i]);
+                e_grad_index[0] = i;
+                e_grad_index[1] = i + 1;
+                break;
+            }
+        }
+    }
+    else
+    {
+        if (erro <= e_membership_values[0])
+        {
+            e_gradmembership[0] = 1;
+            e_gradmembership[1] = 0;
+            e_grad_index[0] = 0;
+            e_grad_index[1] = -1;
+        }
+        else if (erro >= e_membership_values[6])
+        {
+            e_gradmembership[0] = 1;
+            e_gradmembership[1] = 0;
+            e_grad_index[0] = 6;
+            e_grad_index[1] = -1;
+        }
+    }
+
+    if (erro_c > ec_membership_values[0] && erro_c < ec_membership_values[6])
+    {
+        for (int i = 0; i < num_area - 2; i++)
+        {
+            if (erro_c >= ec_membership_values[i] && erro_c <= ec_membership_values[i + 1])
+            {
+                ec_gradmembership[0] = -(erro_c - ec_membership_values[i + 1]) / (ec_membership_values[i + 1] - ec_membership_values[i]);
+                ec_gradmembership[1] = 1 + (erro_c - ec_membership_values[i + 1]) / (ec_membership_values[i + 1] - ec_membership_values[i]);
+                ec_grad_index[0] = i;
+                ec_grad_index[1] = i + 1;
+                break;
+            }
+        }
+    }
+    else
+    {
+        if (erro_c <= ec_membership_values[0])
+        {
+            ec_gradmembership[0] = 1;
+            ec_gradmembership[1] = 0;
+            ec_grad_index[0] = 0;
+            ec_grad_index[1] = -1;
+        }
+        else if (erro_c >= ec_membership_values[6])
+        {
+            ec_gradmembership[0] = 1;
+            ec_gradmembership[1] = 0;
+            ec_grad_index[0] = 6;
+            ec_grad_index[1] = -1;
+        }
+    }
+
+}
+
+/获取输出增量kp,ki,kd的总隶属度/
+void FuzzyPID::GetSumGrad()
+{
+    for (int i = 0; i <= num_area - 1; i++)
+    {
+        KpgradSums[i] = 0;
+        KigradSums[i] = 0;
+    KdgradSums[i] = 0;
+
+    }
+  for (int i=0;i<2;i++)
+  {
+      if (e_grad_index[i] == -1)
+      {
+       continue;
+      }
+      for (int j = 0; j < 2; j++)
+      {
+          if (ec_grad_index[j] != -1)
+          {
+              int indexKp = Kp_rule_list[e_grad_index[i]][ec_grad_index[j]] + 3;
+              int indexKi = Ki_rule_list[e_grad_index[i]][ec_grad_index[j]] + 3;
+              int indexKd = Kd_rule_list[e_grad_index[i]][ec_grad_index[j]] + 3;
+              //gradSums[index] = gradSums[index] + (e_gradmembership[i] * ec_gradmembership[j])* Kp_rule_list[e_grad_index[i]][ec_grad_index[j]];
+              KpgradSums[indexKp]= KpgradSums[indexKp] + (e_gradmembership[i] * ec_gradmembership[j]);
+              KigradSums[indexKi] = KigradSums[indexKi] + (e_gradmembership[i] * ec_gradmembership[j]);
+              KdgradSums[indexKd] = KdgradSums[indexKd] + (e_gradmembership[i] * ec_gradmembership[j]);
+          }
+          else
+          {
+            continue;
+          }
+
+      }
+  }
+
+}
+
+计算输出增量kp,kd,ki对应论域值//
+void FuzzyPID::GetOUT()
+{
+    for (int i = 0; i < num_area - 1; i++)
+    {
+        qdetail_kp += kp_menbership_values[i] * KpgradSums[i];
+        qdetail_ki += ki_menbership_values[i] * KigradSums[i];
+        qdetail_kd+= kd_menbership_values[i] * KdgradSums[i];
+    }
+}
+
+//模糊PID控制实现函数/
+float FuzzyPID::FuzzyPIDcontroller(float e_max, float e_min, float ec_max, float ec_min, float kp_max, float kp_min, float erro, float erro_c,float ki_max,float ki_min,float kd_max,float kd_min,float erro_pre,float errp_ppre)
+{
+    errosum += erro;
+    //Arear_dipart(e_max, e_min, ec_max, ec_min, kp_max, kp_min,ki_max,ki_min,kd_max,kd_min);
+    qerro = Quantization(e_max, e_min, erro);
+    qerro_c = Quantization(ec_max, ec_min, erro_c);
+    Get_grad_membership(qerro, qerro_c);
+    GetSumGrad();
+    GetOUT();
+    detail_kp = Inverse_quantization(kp_max, kp_min, qdetail_kp);
+    detail_ki = Inverse_quantization(ki_max, ki_min, qdetail_ki);
+    detail_kd = Inverse_quantization(kd_max, kd_min, qdetail_kd);
+    qdetail_kd = 0;
+    qdetail_ki = 0;
+    qdetail_kp = 0;
+    /*if (qdetail_kp >= kp_max)
+        qdetail_kp = kp_max;
+    else if (qdetail_kp <= kp_min)
+        qdetail_kp = kp_min;
+    if (qdetail_ki >= ki_max)
+        qdetail_ki = ki_max;
+    else if (qdetail_ki <= ki_min)
+        qdetail_ki = ki_min;
+    if (qdetail_kd >= kd_max)
+        qdetail_kd = kd_max;
+    else if (qdetail_kd <= kd_min)
+        qdetail_kd = kd_min;*/
+    kp = kp + detail_kp;
+    ki = ki + detail_ki;
+    kd = kd + detail_kd;
+    if (kp < 0)
+        kp = 0;
+    if (ki < 0)
+        ki = 0;
+    if (kd < 0)
+        kd = 0;
+    detail_kp = 0;
+  detail_ki=0;
+  detail_kd=0;
+  float output = kp*(erro - erro_pre) + ki * erro + kd * (erro - 2 * erro_pre + errp_ppre);
+    return output;
+}
+
+///区间映射函数///
+float FuzzyPID::Quantization(float maximum,float minimum,float x)
+{
+    float qvalues= 6.0 *(x-minimum)/(maximum - minimum)-3;
+    //float qvalues=6.0*()
+    return qvalues;
+   
+    //qvalues[1] = 3.0 * ecerro / (maximum - minimum);
+}
+
+//反区间映射函数
+float FuzzyPID::Inverse_quantization(float maximum, float minimum, float qvalues)
+{
+    float x = (maximum - minimum) *(qvalues + 3)/6 + minimum;
+    return x;
+}
+
+```
 
 # 第四章 自平衡单车设计
 ### 平衡原理讲解
